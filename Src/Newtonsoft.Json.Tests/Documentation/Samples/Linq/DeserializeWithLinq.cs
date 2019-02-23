@@ -23,13 +23,26 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+#if !DNXCORE50 || NETSTANDARD2_0
+
 using System;
 using System.Collections.Generic;
+#if NET20
+using Newtonsoft.Json.Utilities.LinqBridge;
+#else
 using System.Linq;
+#endif
 using System.Text;
 using System.Web;
 using Newtonsoft.Json.Linq;
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+#else
 using NUnit.Framework;
+
+#endif
 
 namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
 {
@@ -80,8 +93,10 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
             // <p>Content!</p>
             #endregion
 
-            Assert.AreEqual(@"<h3>Title!</h3>
+            StringAssert.AreEqual(@"<h3>Title!</h3>
 <p>Content!</p>", blogPosts[0].Body);
         }
     }
 }
+
+#endif

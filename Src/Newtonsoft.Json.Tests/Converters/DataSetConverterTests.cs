@@ -23,14 +23,10 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
-#if !(NETFX_CORE || PORTABLE || DNXCORE50 || PORTABLE40)
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
 using System;
 using Newtonsoft.Json.Converters;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif DNXCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -40,6 +36,7 @@ using NUnit.Framework;
 using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
 using System.Data;
+using System.IO;
 
 namespace Newtonsoft.Json.Tests.Converters
 {
@@ -48,7 +45,11 @@ namespace Newtonsoft.Json.Tests.Converters
         [Test]
         public void DeserializeInvalidDataTable()
         {
-            ExceptionAssert.Throws<JsonException>(() => JsonConvert.DeserializeObject<DataSet>("{\"pending_count\":23,\"completed_count\":45}"), "Unexpected JSON token when reading DataTable. Expected StartArray, got Integer. Path 'pending_count', line 1, position 19.");
+            var ex = ExceptionAssert.Throws<JsonSerializationException>(() => JsonConvert.DeserializeObject<DataSet>("{\"pending_count\":23,\"completed_count\":45}"), "Unexpected JSON token when reading DataTable. Expected StartArray, got Integer. Path 'pending_count', line 1, position 19.");
+
+            Assert.AreEqual(1, ex.LineNumber);
+            Assert.AreEqual(19, ex.LinePosition);
+            Assert.AreEqual("pending_count", ex.Path);
         }
 
         [Test]
@@ -104,6 +105,65 @@ namespace Newtonsoft.Json.Tests.Converters
             Assert.AreEqual(typeof(string), dt.Columns[1].DataType);
 
             Assert.AreEqual(2, dt.Rows.Count);
+        }
+
+        public class DataSetTestClass
+        {
+            public DataSet Set { get; set; }
+        }
+
+        [Test]
+        public void WriteJsonNull()
+        {
+            StringWriter sw = new StringWriter();
+            JsonTextWriter jsonWriter = new JsonTextWriter(sw);
+
+            DataSetConverter converter = new DataSetConverter();
+            converter.WriteJson(jsonWriter, null, null);
+
+            StringAssert.AreEqual(@"null", sw.ToString());
+        }
+
+        [Test]
+        public void SerializeNull()
+        {
+            DataSetTestClass c1 = new DataSetTestClass
+            {
+                Set = null
+            };
+
+            string json = JsonConvert.SerializeObject(c1, Formatting.Indented);
+
+            StringAssert.AreEqual(@"{
+  ""Set"": null
+}", json);
+
+            DataSetTestClass c2 = JsonConvert.DeserializeObject<DataSetTestClass>(json);
+
+            Assert.AreEqual(null, c2.Set);
+        }
+
+        [Test]
+        public void SerializeNullRoot()
+        {
+            string json = JsonConvert.SerializeObject(null, typeof(DataSet), new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented
+            });
+
+            StringAssert.AreEqual(@"null", json);
+        }
+
+        [Test]
+        public void DeserializeNullTable()
+        {
+            string json = @"{
+  ""TableName"": null
+}";
+
+            DataSet ds = JsonConvert.DeserializeObject<DataSet>(json);
+
+            Assert.AreEqual(true, ds.Tables.Contains("TableName"));
         }
 
         [Test]
@@ -543,4 +603,5 @@ namespace Newtonsoft.Json.Tests.Converters
         }
     }
 }
+
 #endif

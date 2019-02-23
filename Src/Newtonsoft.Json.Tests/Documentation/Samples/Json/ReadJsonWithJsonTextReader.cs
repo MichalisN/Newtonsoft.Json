@@ -26,9 +26,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+#else
 using NUnit.Framework;
+
+#endif
 
 namespace Newtonsoft.Json.Tests.Documentation.Samples.Json
 {
@@ -46,7 +52,7 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Json
                  'DVD read/writer'
                  /*(broken)*/,
                  '500 gigabyte hard drive',
-                 '200 gigabype hard drive'
+                 '200 gigabyte hard drive'
                ]
             }";
 
@@ -54,9 +60,13 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Json
             while (reader.Read())
             {
                 if (reader.Value != null)
+                {
                     Console.WriteLine("Token: {0}, Value: {1}", reader.TokenType, reader.Value);
+                }
                 else
+                {
                     Console.WriteLine("Token: {0}", reader.TokenType);
+                }
             }
 
             // Token: StartObject
@@ -69,7 +79,7 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Json
             // Token: String, Value: DVD read/writer
             // Token: Comment, Value: (broken)
             // Token: String, Value: 500 gigabyte hard drive
-            // Token: String, Value: 200 gigabype hard drive
+            // Token: String, Value: 200 gigabyte hard drive
             // Token: EndArray
             // Token: EndObject
             #endregion

@@ -26,9 +26,20 @@
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+#if NET20
+using Newtonsoft.Json.Utilities.LinqBridge;
+#else
 using System.Linq;
+#endif
 using System.Text;
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+#else
 using NUnit.Framework;
+
+#endif
 
 namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
 {
@@ -47,7 +58,7 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
                 'item': [
                   {
                     'title': 'Json.NET 1.3 + New license + Now on CodePlex',
-                    'description': 'Annoucing the release of Json.NET 1.3, the MIT license and the source on CodePlex',
+                    'description': 'Announcing the release of Json.NET 1.3, the MIT license and the source on CodePlex',
                     'link': 'http://james.newtonking.com/projects/json-net.aspx',
                     'category': [
                       'Json.NET',
@@ -56,7 +67,7 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
                   },
                   {
                     'title': 'LINQ to JSON beta',
-                    'description': 'Annoucing LINQ to JSON',
+                    'description': 'Announcing LINQ to JSON',
                     'link': 'http://james.newtonking.com/projects/json-net.aspx',
                     'category': [
                       'Json.NET',

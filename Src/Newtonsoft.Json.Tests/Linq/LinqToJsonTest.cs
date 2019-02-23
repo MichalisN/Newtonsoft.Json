@@ -27,11 +27,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif DNXCORE50
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
@@ -42,18 +38,110 @@ using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Tests.Serialization;
 using Newtonsoft.Json.Tests.TestObjects;
+using Newtonsoft.Json.Tests.TestObjects.Organization;
 #if NET20
 using Newtonsoft.Json.Utilities.LinqBridge;
 #else
 using System.Linq;
 #endif
 using System.IO;
+using System.Runtime.Serialization;
 
 namespace Newtonsoft.Json.Tests.Linq
 {
     [TestFixture]
     public class LinqToJsonTest : TestFixtureBase
     {
+        [Test]
+        public void EscapedQuotePath()
+        {
+            JValue v = new JValue(1);
+            JObject o = new JObject();
+            o["We're offline!"] = v;
+
+            Assert.AreEqual(@"['We\'re offline!']", v.Path);
+        }
+
+#if !(NET20 || NET35 || PORTABLE40 || PORTABLE) || NETSTANDARD1_3 || NETSTANDARD2_0
+        public class DemoClass
+        {
+            public decimal maxValue;
+        }
+
+        [Test]
+        public void ToObjectDecimal()
+        {
+            var jArray = JArray.Parse("[{ maxValue:10000000000000000000 }]");
+            var list = jArray.ToObject<List<DemoClass>>();
+
+            Assert.AreEqual(10000000000000000000m, list[0].maxValue);
+        }
+#endif
+
+        [Test]
+        public void ToObjectFromGuidToString()
+        {
+            JValue token = new JValue(new Guid("91274484-3b20-48b4-9d18-7d936b2cb88f"));
+            string value = token.ToObject<string>();
+            Assert.AreEqual("91274484-3b20-48b4-9d18-7d936b2cb88f", value);
+        }
+
+        [Test]
+        public void ToObjectFromIntegerToString()
+        {
+            JValue token = new JValue(1234);
+            string value = token.ToObject<string>();
+            Assert.AreEqual("1234", value);
+        }
+
+        [Test]
+        public void ToObjectFromStringToInteger()
+        {
+            JValue token = new JValue("1234");
+            int value = token.ToObject<int>();
+            Assert.AreEqual(1234, value);
+        }
+
+        [Test]
+        public void FromObjectGuid()
+        {
+            var token1 = new JValue(Guid.NewGuid());
+            var token2 = JToken.FromObject(token1);
+            Assert.IsTrue(JToken.DeepEquals(token1, token2));
+            Assert.AreEqual(token1.Type, token2.Type);
+        }
+
+        [Test]
+        public void FromObjectTimeSpan()
+        {
+            var token1 = new JValue(TimeSpan.FromDays(1));
+            var token2 = JToken.FromObject(token1);
+            Assert.IsTrue(JToken.DeepEquals(token1, token2));
+            Assert.AreEqual(token1.Type, token2.Type);
+        }
+
+        [Test]
+        public void FromObjectUri()
+        {
+            var token1 = new JValue(new Uri("http://www.newtonsoft.com"));
+            var token2 = JToken.FromObject(token1);
+            Assert.IsTrue(JToken.DeepEquals(token1, token2));
+            Assert.AreEqual(token1.Type, token2.Type);
+        }
+
+        [Test]
+        public void ToObject_Guid()
+        {
+            JObject anon = new JObject
+            {
+                ["id"] = Guid.NewGuid()
+            };
+            Assert.AreEqual(JTokenType.Guid, anon["id"].Type);
+
+            Dictionary<string, JToken> dict = anon.ToObject<Dictionary<string, JToken>>();
+            Assert.AreEqual(JTokenType.Guid, dict["id"].Type);
+        }
+
         public class TestClass_ULong
         {
             public ulong Value { get; set; }
@@ -171,11 +259,32 @@ namespace Newtonsoft.Json.Tests.Linq
 ]");
 
             JsonTextReader jsonReader = new JsonTextReader(textReader);
-            JArray a = (JArray)JToken.ReadFrom(jsonReader);
+            JArray a = (JArray)JToken.ReadFrom(jsonReader, new JsonLoadSettings
+            {
+                CommentHandling = CommentHandling.Load
+            });
 
             Assert.AreEqual(4, a.Count);
             Assert.AreEqual(JTokenType.Comment, a[0].Type);
             Assert.AreEqual(" hi", ((JValue)a[0]).Value);
+        }
+
+        [Test]
+        public void CommentsAndReadFrom_IgnoreComments()
+        {
+            StringReader textReader = new StringReader(@"[
+    // hi
+    1,
+    2,
+    3
+]");
+
+            JsonTextReader jsonReader = new JsonTextReader(textReader);
+            JArray a = (JArray)JToken.ReadFrom(jsonReader);
+
+            Assert.AreEqual(3, a.Count);
+            Assert.AreEqual(JTokenType.Integer, a[0].Type);
+            Assert.AreEqual(1L, ((JValue)a[0]).Value);
         }
 
         [Test]
@@ -190,11 +299,39 @@ namespace Newtonsoft.Json.Tests.Linq
 ]");
 
             JsonTextReader jsonReader = new JsonTextReader(textReader);
-            JValue v = (JValue)JToken.ReadFrom(jsonReader);
+            JValue v = (JValue)JToken.ReadFrom(jsonReader, new JsonLoadSettings
+            {
+                CommentHandling = CommentHandling.Load
+            });
 
             Assert.AreEqual(JTokenType.Comment, v.Type);
 
             IJsonLineInfo lineInfo = v;
+            Assert.AreEqual(true, lineInfo.HasLineInfo());
+            Assert.AreEqual(2, lineInfo.LineNumber);
+            Assert.AreEqual(5, lineInfo.LinePosition);
+        }
+
+        [Test]
+        public void StartingCommentAndReadFrom_IgnoreComments()
+        {
+            StringReader textReader = new StringReader(@"
+// hi
+[
+    1,
+    2,
+    3
+]");
+
+            JsonTextReader jsonReader = new JsonTextReader(textReader);
+            JArray a = (JArray)JToken.ReadFrom(jsonReader, new JsonLoadSettings
+            {
+                CommentHandling = CommentHandling.Ignore
+            });
+
+            Assert.AreEqual(JTokenType.Array, a.Type);
+
+            IJsonLineInfo lineInfo = a;
             Assert.AreEqual(true, lineInfo.HasLineInfo());
             Assert.AreEqual(3, lineInfo.LineNumber);
             Assert.AreEqual(1, lineInfo.LinePosition);
@@ -219,7 +356,7 @@ undefined
             IJsonLineInfo lineInfo = v;
             Assert.AreEqual(true, lineInfo.HasLineInfo());
             Assert.AreEqual(2, lineInfo.LineNumber);
-            Assert.AreEqual(10, lineInfo.LinePosition);
+            Assert.AreEqual(9, lineInfo.LinePosition);
         }
 
         [Test]
@@ -271,7 +408,7 @@ undefined
 
             JToken v1 = o["frameworks"]["dnxcore50"]["dependencies"]["System.Xml.ReaderWriter"]["source"];
 
-            Assert.AreEqual("frameworks.dnxcore50.dependencies.['System.Xml.ReaderWriter'].source", v1.Path);
+            Assert.AreEqual("frameworks.dnxcore50.dependencies['System.Xml.ReaderWriter'].source", v1.Path);
 
             JToken v2 = o.SelectToken(v1.Path);
 
@@ -653,14 +790,14 @@ keyword such as type of business.""
                 new Post()
                 {
                     Title = "LINQ to JSON beta",
-                    Description = "Annoucing LINQ to JSON",
+                    Description = "Announcing LINQ to JSON",
                     Link = "http://james.newtonking.com/projects/json-net.aspx",
                     Categories = new List<string>() { "Json.NET", "LINQ" }
                 },
                 new Post()
                 {
                     Title = "Json.NET 1.3 + New license + Now on CodePlex",
-                    Description = "Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex",
+                    Description = "Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex",
                     Link = "http://james.newtonking.com/projects/json-net.aspx",
                     Categories = new List<string>() { "Json.NET", "CodePlex" }
                 }
@@ -673,7 +810,7 @@ keyword such as type of business.""
             Post p = new Post
             {
                 Title = "How to use FromObject",
-                Categories = new [] { "LINQ to JSON" }
+                Categories = new[] { "LINQ to JSON" }
             };
 
             // serialize Post to JSON then parse JSON – SLOW!
@@ -771,7 +908,7 @@ keyword such as type of business.""
     ""item"": [
       {
         ""title"": ""Json.NET 1.3 + New license + Now on CodePlex"",
-        ""description"": ""Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
+        ""description"": ""Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
         ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
         ""category"": [
           ""Json.NET"",
@@ -780,7 +917,7 @@ keyword such as type of business.""
       },
       {
         ""title"": ""LINQ to JSON beta"",
-        ""description"": ""Annoucing LINQ to JSON"",
+        ""description"": ""Announcing LINQ to JSON"",
         ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
         ""category"": [
           ""Json.NET"",
@@ -824,7 +961,7 @@ keyword such as type of business.""
                           ""item"": [
                             {
                               ""title"": ""Json.NET 1.3 + New license + Now on CodePlex"",
-                              ""description"": ""Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
+                              ""description"": ""Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
                               ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
                               ""category"": [
                                 ""Json.NET"",
@@ -833,7 +970,7 @@ keyword such as type of business.""
                             },
                             {
                               ""title"": ""LINQ to JSON beta"",
-                              ""description"": ""Annoucing LINQ to JSON"",
+                              ""description"": ""Announcing LINQ to JSON"",
                               ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
                               ""category"": [
                                 ""Json.NET"",
@@ -876,7 +1013,7 @@ keyword such as type of business.""
             {
                 JArray a = new JArray();
                 Assert.AreEqual(null, a["purple"]);
-            }, @"Accessed JArray values with invalid key value: ""purple"". Array position index expected.");
+            }, @"Accessed JArray values with invalid key value: ""purple"". Int32 array index expected.");
         }
 
         [Test]
@@ -978,7 +1115,7 @@ keyword such as type of business.""
     ""item"": [
       {
         ""title"": ""Json.NET 1.3 + New license + Now on CodePlex"",
-        ""description"": ""Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
+        ""description"": ""Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
         ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
         ""category"": [
           ""Json.NET"",
@@ -987,7 +1124,7 @@ keyword such as type of business.""
       },
       {
         ""title"": ""LINQ to JSON beta"",
-        ""description"": ""Annoucing LINQ to JSON"",
+        ""description"": ""Announcing LINQ to JSON"",
         ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
         ""category"": [
           ""Json.NET"",
@@ -1043,7 +1180,7 @@ keyword such as type of business.""
     ""item"": [
       {
         ""title"": ""Json.NET 1.3 + New license + Now on CodePlex"",
-        ""description"": ""Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
+        ""description"": ""Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
         ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
         ""category"": [
           ""Json.NET"",
@@ -1052,7 +1189,7 @@ keyword such as type of business.""
       },
       {
         ""title"": ""LINQ to JSON beta"",
-        ""description"": ""Annoucing LINQ to JSON"",
+        ""description"": ""Announcing LINQ to JSON"",
         ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
         ""category"": [
           ""Json.NET"",
@@ -1061,8 +1198,8 @@ keyword such as type of business.""
       }
     ]
   }
-}", o.ToString()); 
-            
+}", o.ToString());
+
             CustomAssert.IsInstanceOfType(typeof(JObject), o);
             CustomAssert.IsInstanceOfType(typeof(JObject), o["channel"]);
             Assert.AreEqual("James Newton-King", (string)o["channel"]["title"]);
@@ -1137,7 +1274,7 @@ keyword such as type of business.""
                           ""item"": [
                             {
                               ""title"": ""Json.NET 1.3 + New license + Now on CodePlex"",
-                              ""description"": ""Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
+                              ""description"": ""Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
                               ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
                               ""category"": [
                                 ""Json.NET"",
@@ -1146,7 +1283,7 @@ keyword such as type of business.""
                             },
                             {
                               ""title"": ""LINQ to JSON beta"",
-                              ""description"": ""Annoucing LINQ to JSON"",
+                              ""description"": ""Announcing LINQ to JSON"",
                               ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
                               ""category"": [
                                 ""Json.NET"",
@@ -1162,7 +1299,7 @@ keyword such as type of business.""
                           ""item"": [
                             {
                               ""title"": ""Json.NET 1.3 + New license + Now on CodePlex"",
-                              ""description"": ""Annoucing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
+                              ""description"": ""Announcing the release of Json.NET 1.3, the MIT license and being available on CodePlex"",
                               ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
                               ""category"": [
                                 ""Json.NET"",
@@ -1171,7 +1308,7 @@ keyword such as type of business.""
                             },
                             {
                               ""title"": ""LINQ to JSON beta"",
-                              ""description"": ""Annoucing LINQ to JSON"",
+                              ""description"": ""Announcing LINQ to JSON"",
                               ""link"": ""http://james.newtonking.com/projects/json-net.aspx"",
                               ""category"": [
                                 ""Json.NET"",
@@ -1235,7 +1372,7 @@ keyword such as type of business.""
   ""NullableGuid"": ""9e9f3adf-e017-4f72-91e0-617ebe85967d"",
   ""TimeSpan"": ""1.00:00:00"",
   ""NullableTimeSpan"": ""01:00:00"",
-  ""Uri"": ""http://testuri.com/""
+  ""Uri"": ""http://testuri.com""
 }", o.ToString());
 
             UriGuidTimeSpanTestClass c2 = o.ToObject<UriGuidTimeSpanTestClass>();
@@ -1244,6 +1381,10 @@ keyword such as type of business.""
             Assert.AreEqual(c1.TimeSpan, c2.TimeSpan);
             Assert.AreEqual(c1.NullableTimeSpan, c2.NullableTimeSpan);
             Assert.AreEqual(c1.Uri, c2.Uri);
+
+            string j = JsonConvert.SerializeObject(c1, Formatting.Indented);
+
+            StringAssert.AreEqual(j, o.ToString());
         }
 
         [Test]
@@ -1273,6 +1414,55 @@ keyword such as type of business.""
 
                 Assert.AreEqual(users["name2"], "Matthew Doig");
             }, "The best overloaded method match for 'System.Collections.Generic.IDictionary<string,string>.Add(string, string)' has some invalid arguments");
+        }
+#endif
+
+#if !(NET20)
+        [JsonConverter(typeof(StringEnumConverter))]
+        public enum FooBar
+        {
+            [EnumMember(Value = "SOME_VALUE")]
+            SomeValue,
+
+            [EnumMember(Value = "SOME_OTHER_VALUE")]
+            SomeOtherValue
+        }
+
+        public class MyObject
+        {
+            public FooBar FooBar { get; set; }
+        }
+
+        [Test]
+        public void ToObject_Enum_Converter()
+        {
+            JObject o = JObject.Parse("{'FooBar':'SOME_OTHER_VALUE'}");
+
+            FooBar e = o["FooBar"].ToObject<FooBar>();
+            Assert.AreEqual(FooBar.SomeOtherValue, e);
+        }
+
+        public enum FooBarNoEnum
+        {
+            [EnumMember(Value = "SOME_VALUE")]
+            SomeValue,
+
+            [EnumMember(Value = "SOME_OTHER_VALUE")]
+            SomeOtherValue
+        }
+
+        public class MyObjectNoEnum
+        {
+            public FooBarNoEnum FooBarNoEnum { get; set; }
+        }
+
+        [Test]
+        public void ToObject_Enum_NoConverter()
+        {
+            JObject o = JObject.Parse("{'FooBarNoEnum':'SOME_OTHER_VALUE'}");
+
+            FooBarNoEnum e = o["FooBarNoEnum"].ToObject<FooBarNoEnum>();
+            Assert.AreEqual(FooBarNoEnum.SomeOtherValue, e);
         }
 #endif
 
@@ -1364,6 +1554,40 @@ keyword such as type of business.""
 
             string json = t.ToString();
             return json;
+        }
+
+        [Test]
+        public void HashCodeTests()
+        {
+            JObject o1 = new JObject
+            {
+                ["prop"] = 1
+            };
+            JObject o2 = new JObject
+            {
+                ["prop"] = 1
+            };
+
+            Assert.IsFalse(ReferenceEquals(o1, o2));
+            Assert.IsFalse(Equals(o1, o2));
+            Assert.IsFalse(o1.GetHashCode() == o2.GetHashCode());
+            Assert.IsTrue(o1.GetDeepHashCode() == o2.GetDeepHashCode());
+            Assert.IsTrue(JToken.DeepEquals(o1, o2));
+
+            JArray a1 = new JArray
+            {
+                1
+            };
+            JArray a2 = new JArray
+            {
+                1
+            };
+
+            Assert.IsFalse(ReferenceEquals(a1, a2));
+            Assert.IsFalse(Equals(a1, a2));
+            Assert.IsFalse(a1.GetHashCode() == a2.GetHashCode());
+            Assert.IsTrue(a1.GetDeepHashCode() == a2.GetDeepHashCode());
+            Assert.IsTrue(JToken.DeepEquals(a1, a2));
         }
     }
 }

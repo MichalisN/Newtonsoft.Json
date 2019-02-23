@@ -24,24 +24,30 @@
 #endregion
 
 using System;
+#if !(NET20 || NET35 || NET40 || PORTABLE || PORTABLE40 || DNXCORE50) || NETSTANDARD2_0
+using System.Buffers;
+#endif
 using System.Collections.Generic;
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
+using System.Data;
+#endif
+using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Schema;
 using Newtonsoft.Json.Serialization;
-#if NETFX_CORE
-using Microsoft.VisualStudio.TestPlatform.UnitTestFramework;
-using TestFixture = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestClassAttribute;
-using Test = Microsoft.VisualStudio.TestPlatform.UnitTestFramework.TestMethodAttribute;
-#elif DNXCORE50
+#if !(NET20 || NET35 || NET40)
+using System.Threading.Tasks;
+#endif
+#if DNXCORE50
 using Xunit;
 using Test = Xunit.FactAttribute;
 using Assert = Newtonsoft.Json.Tests.XUnitAssert;
 #else
 using NUnit.Framework;
+
 #endif
 
 namespace Newtonsoft.Json.Tests
@@ -115,8 +121,8 @@ namespace Newtonsoft.Json.Tests
                 // create hex string from value
                 HtmlColor color = (HtmlColor)value;
                 string hexString = color.Red.ToString("X2")
-                    + color.Green.ToString("X2")
-                    + color.Blue.ToString("X2");
+                                   + color.Green.ToString("X2")
+                                   + color.Blue.ToString("X2");
 
                 // write value to json
                 writer.WriteValue("#" + hexString);
@@ -452,10 +458,13 @@ namespace Newtonsoft.Json.Tests
         public class House1
         {
             public string StreetAddress { get; set; }
+
             [JsonIgnore]
             public int Bedrooms { get; set; }
+
             [JsonIgnore]
             public decimal FloorArea { get; set; }
+
             [JsonIgnore]
             public DateTime BuildDate { get; set; }
         }
@@ -465,6 +474,7 @@ namespace Newtonsoft.Json.Tests
         {
             [JsonProperty]
             public string StreetAddress { get; set; }
+
             public int Bedrooms { get; set; }
             public decimal FloorArea { get; set; }
             public DateTime BuildDate { get; set; }
@@ -475,6 +485,7 @@ namespace Newtonsoft.Json.Tests
         {
             [JsonProperty("address")]
             public string StreetAddress { get; set; }
+
             public int Bedrooms { get; set; }
             public decimal FloorArea { get; set; }
             public DateTime BuildDate { get; set; }
@@ -485,8 +496,10 @@ namespace Newtonsoft.Json.Tests
         {
             [JsonProperty("address", Order = 2)]
             public string StreetAddress { get; set; }
+
             public int Bedrooms { get; set; }
             public decimal FloorArea { get; set; }
+
             [JsonProperty("buildDate", Order = 1)]
             public DateTime BuildDate { get; set; }
         }
@@ -496,8 +509,10 @@ namespace Newtonsoft.Json.Tests
         {
             [JsonProperty("address", Order = 2)]
             public string StreetAddress { get; set; }
+
             public int Bedrooms { get; set; }
             public decimal FloorArea { get; set; }
+
             [JsonProperty("buildDate", Order = 1)]
             [JsonConverter(typeof(JavaScriptDateTimeConverter))]
             public DateTime BuildDate { get; set; }
@@ -580,5 +595,132 @@ namespace Newtonsoft.Json.Tests
   ]
 }", json);
         }
+
+#if !(NET20 || NET35 || NET40 || PORTABLE || PORTABLE40 || DNXCORE50) || NETSTANDARD2_0
+        [Test]
+        public void ArrayPooling()
+        {
+            IList<int> value;
+
+            JsonSerializer serializer = new JsonSerializer();
+            using (JsonTextReader reader = new JsonTextReader(new StringReader(@"[1,2,3,4]")))
+            {
+                reader.ArrayPool = JsonArrayPool.Instance;
+
+                value = serializer.Deserialize<IList<int>>(reader);
+            }
+
+            Assert.AreEqual(4, value.Count);
+        }
+#endif
+
+#if !(PORTABLE || DNXCORE50 || PORTABLE40) || NETSTANDARD2_0
+        [Test]
+        public void SerializeDataTable()
+        {
+            DataTable dt = new DataTable();
+            dt.Columns.Add("PackageId", typeof(string));
+            dt.Columns.Add("Version", typeof(string));
+            dt.Columns.Add("ReleaseDate", typeof(DateTime));
+
+            dt.Rows.Add("Newtonsoft.Json", "11.0.1", new DateTime(2018, 2, 17));
+            dt.Rows.Add("Newtonsoft.Json", "10.0.3", new DateTime(2017, 6, 18));
+
+            string json = JsonConvert.SerializeObject(dt, Formatting.Indented);
+
+            Console.WriteLine(json);
+            // [
+            //   {
+            //     "PackageId": "Newtonsoft.Json",
+            //     "Version": "11.0.1",
+            //     "ReleaseDate": "2018-02-17T00:00:00"
+            //   },
+            //   {
+            //     "PackageId": "Newtonsoft.Json",
+            //     "Version": "10.0.3",
+            //     "ReleaseDate": "2017-06-18T00:00:00"
+            //   }
+            // ]
+
+            StringAssert.AreEqual(@"[
+  {
+    ""PackageId"": ""Newtonsoft.Json"",
+    ""Version"": ""11.0.1"",
+    ""ReleaseDate"": ""2018-02-17T00:00:00""
+  },
+  {
+    ""PackageId"": ""Newtonsoft.Json"",
+    ""Version"": ""10.0.3"",
+    ""ReleaseDate"": ""2017-06-18T00:00:00""
+  }
+]", json);
+        }
+#endif
+
+        [Test]
+        public void JsonPathRegex()
+        {
+            JArray packages = JArray.Parse(@"[
+              {
+                ""PackageId"": ""Newtonsoft.Json"",
+                ""Version"": ""11.0.1"",
+                ""ReleaseDate"": ""2018-02-17T00:00:00""
+              },
+              {
+                ""PackageId"": ""NUnit"",
+                ""Version"": ""3.9.0"",
+                ""ReleaseDate"": ""2017-11-10T00:00:00""
+              }
+            ]");
+
+            List<JToken> newtonsoftPackages = packages.SelectTokens(@"$.[?(@.PackageId =~ /^Newtonsoft\.(.*)$/)]").ToList();
+
+            Console.WriteLine(newtonsoftPackages.Count);
+            // 1
+
+            Assert.AreEqual(1, newtonsoftPackages.Count);
+        }
+
+#if !(NET20 || NET35 || NET40 || PORTABLE || PORTABLE40 || DNXCORE50) || NETSTANDARD2_0
+        [Test]
+        public async Task AsyncDemo()
+        {
+            JArray largeJson;
+
+            // read asynchronously from a file
+            using (TextReader textReader = new StreamReader(new FileStream(ResolvePath(@"large.json"), FileMode.Open, FileAccess.Read, FileShare.Read, 4096, true)))
+            {
+                largeJson = await JArray.LoadAsync(new JsonTextReader(textReader));
+            }
+
+            JToken user = largeJson.SelectToken("$[?(@.name == 'Woodard Caldwell')]");
+            user["isActive"] = false;
+
+            // write asynchronously to a file
+            using (TextWriter textWriter = new StreamWriter(new FileStream(ResolvePath(@"large.json"), FileMode.Open, FileAccess.Write, FileShare.Write, 4096, true)))
+            {
+                await largeJson.WriteToAsync(new JsonTextWriter(textWriter));
+            }
+        }
+#endif
     }
+
+#if !(NET20 || NET35 || NET40 || PORTABLE || PORTABLE40 || DNXCORE50) || NETSTANDARD2_0
+    public class JsonArrayPool : IArrayPool<char>
+    {
+        public static readonly JsonArrayPool Instance = new JsonArrayPool();
+
+        public char[] Rent(int minimumLength)
+        {
+            // use System.Buffers shared pool
+            return ArrayPool<char>.Shared.Rent(minimumLength);
+        }
+
+        public void Return(char[] array)
+        {
+            // use System.Buffers shared pool
+            ArrayPool<char>.Shared.Return(array);
+        }
+    }
+#endif
 }

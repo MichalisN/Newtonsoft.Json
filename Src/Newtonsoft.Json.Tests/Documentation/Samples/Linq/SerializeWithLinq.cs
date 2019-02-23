@@ -23,13 +23,26 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 #endregion
 
+#if !DNXCORE50 || NETSTANDARD2_0
+
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Web;
 using Newtonsoft.Json.Linq;
+#if NET20
+using Newtonsoft.Json.Utilities.LinqBridge;
+#else
+using System.Linq;
+#endif
+#if DNXCORE50
+using Xunit;
+using Test = Xunit.FactAttribute;
+using Assert = Newtonsoft.Json.Tests.XUnitAssert;
+#else
 using NUnit.Framework;
+
+#endif
 
 namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
 {
@@ -59,8 +72,7 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
                     AuthorName = "James Newton-King",
                     AuthorTwitter = "JamesNK",
                     PostedDate = new DateTime(2013, 1, 23, 19, 30, 0),
-                    Body = @"<h3>Title!</h3>
-                             <p>Content!</p>"
+                    Body = @"<h3>Title!</h3><p>Content!</p>"
                 }
             };
 
@@ -89,12 +101,12 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
             //       "Twitter": "JamesNK"
             //     },
             //     "Date": "2013-01-23T19:30:00",
-            //     "BodyHtml": "&lt;h3&gt;Title!&lt;/h3&gt;\r\n&lt;p&gt;Content!&lt;/p&gt;"
+            //     "BodyHtml": "&lt;h3&gt;Title!&lt;/h3&gt;&lt;p&gt;Content!&lt;/p&gt;"
             //   }
             // ]
             #endregion
 
-            Assert.AreEqual(@"[
+            StringAssert.AreEqual(@"[
   {
     ""Title"": ""Json.NET is awesome!"",
     ""Author"": {
@@ -102,9 +114,11 @@ namespace Newtonsoft.Json.Tests.Documentation.Samples.Linq
       ""Twitter"": ""JamesNK""
     },
     ""Date"": ""2013-01-23T19:30:00"",
-    ""BodyHtml"": ""&lt;h3&gt;Title!&lt;/h3&gt;\r\n                             &lt;p&gt;Content!&lt;/p&gt;""
+    ""BodyHtml"": ""&lt;h3&gt;Title!&lt;/h3&gt;&lt;p&gt;Content!&lt;/p&gt;""
   }
 ]", blogPostsArray.ToString());
         }
     }
 }
+
+#endif
